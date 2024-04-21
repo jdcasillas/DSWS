@@ -1,0 +1,196 @@
+---
+title: "COVID 19 Data Analysis"
+date: "2024-04-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE, echo=TRUE}
+### knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message=FALSE, tidy.opts=list(width.cutoff=60), tidy=TRUE) 
+
+
+
+```
+
+## Covid 19  Dataset 
+The following data files are from JOHNS HOPKINS WHITING SCHOOL of ENGINEERING Center for Systems Science
+and Engineering. This dataset contains daily time series summary tables, including cases and confirmed deaths.  All data is read in from the daily case report.  
+
+Two time series tables are for the US confirmed cases and deaths, reported at the county level. They are named time_series_covid19_confirmed_US.csv, time_series_covid19_deaths_US.csv, respectively and
+two time series tables are for the Global confirmed cases and deaths, reported at the county level. They are named time_series_covid19_confirmed_global.csv, time_series_covid19_deaths_global.csv, respectively.
+
+
+
+
+```{r import_data, message=FALSE , echo=TRUE}
+library(formatR)
+library(tidyverse)
+library(Hmisc)
+library (lubridate)
+library (ggplot2)
+
+COVID_ds_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+filenames <- c("time_series_covid19_confirmed_global.csv","time_series_covid19_deaths_global.csv","time_series_covid19_confirmed_US.csv","time_series_covid19_deaths_US.csv")
+urls <- str_c(COVID_ds_url,filenames)
+
+uid_lookup_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+
+uid <- read_csv(uid_lookup_url) %>% select ( -c(Lat,Long_, Combined_Key,code3,iso2,iso3,Admin2))
+
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+US_cases <- read_csv(urls[3])
+US_deaths <- read_csv(urls[4])
+
+
+
+```
+```{r data_cleanup, message=FALSE , echo=TRUE}
+
+## **DATA Cleaning**
+global_casesp <- global_cases %>% pivot_longer(cols = -c('Province/State','Country/Region',Lat,Long), names_to = "date", values_to = "cases") %>% select(-c(Lat,Long))
+
+
+global_deathsp <- global_deaths %>% pivot_longer(cols = -c('Province/State','Country/Region',Lat,Long),names_to = "date", values_to = "deaths") %>% select(-c(Lat,Long))
+
+global <- global_casesp %>% full_join(global_deathsp) %>% rename(Country_Region="Country/Region", Province_State="Province/State") %>% mutate(date = mdy(date))
+
+
+global <- global %>% filter(cases>0)
+
+US_casesp <- US_cases %>% pivot_longer(cols = -(UID:Combined_Key), names_to="date", values_to="cases") %>% select(Admin2:cases) %>% mutate(date=mdy(date)) %>% select(-c(Lat,Long_))
+
+US_deathsp <- US_deaths %>% pivot_longer(cols = -(UID:Population),names_to="date", values_to="deaths") %>% select(Admin2:deaths) %>% mutate(date=mdy(date)) %>% select(-c(Lat,Long_))
+US <- US_casesp %>% full_join(US_deathsp) 
+
+globalc <- global %>% unite("Combined_Key", c(Province_State,Country_Region), sep=",", na.rm = TRUE, remove = FALSE)
+
+globalcf <- globalc %>% left_join(uid, by= c("Province_State","Country_Region")) %>% select(-c(UID, FIPS)) %>% select(Province_State, Country_Region, date, cases, deaths, Population,  Combined_Key)
+
+
+## **DATA Description and Summary**
+
+## ** Description of the dataset follows:**
+
+describe (globalcf)
+describe (US)
+summary (globalcf)
+summary (US)
+
+```         
+\newpage
+
+### **Data Analysis by Country**
+
+This visualization shows the distribution of cases by the Top 20 Countries. The stacked bars show the number of cases in each Country. The data confirms that the number of cases is proportional to each country's population.
+
+```{r plots, echo=TRUE}
+
+cvt <- globalcf %>% group_by(county=globalcf$Country_Region) %>% summarise(lead=max(deaths,na.rm=TRUE))
+
+cvt2 <- globalcf %>% group_by(county=globalcf$Country_Region) %>% slice(which.max(deaths))
+
+
+cvt3 <- cvt2[order(cvt2$deaths),]
+deaths_top20 <- tail(cvt3,20)
+deaths_top10 <- tail(cvt3,10)
+deaths_top100 <- tail(cvt3,100)
+
+
+p<- ggplot(data=deaths_top20, aes(x=Country_Region,y=deaths)) + geom_bar(stat="identity",color="red",fill="white")+
+geom_text(aes(label=""), vjust=0.9)
+p + theme(axis.text.x = element_text(angle = 90))
+
+ggplot(data=deaths_top20, aes(x=Country_Region,y=deaths)) + geom_bar(stat="identity",width=1,color="green")+
+coord_polar("y",start=0)
+
+ggplot(data=deaths_top10, aes(x="",y=deaths,fill=Country_Region))  + geom_bar(stat="identity",width=1,color="red") + coord_polar("y",start=0)
+
+p6 <- ggplot(deaths_top100, aes(x=deaths, y=cases)) +
+      geom_point(size=3, col = "red")  +
+      geom_smooth(method='lm', se=FALSE, col="black", linetype="solid") +
+      labs(title="Regression of Deaths and cases -  World Countries",x="Deaths",y="cases") +
+      theme_minimal()  
+
+ p6
+
+
+```
+\newpage
+
+### **US Data Analysis **
+
+This visualization shows the distribution of cases by the Top 20 and Top 10 US States. The stacked bars show the number of cases in each state. Simple regression analysis demonstrates the relationships between deaths, cases, and state populations.
+
+```{r plots2, echo=TRUE}
+
+
+cvtus <- US %>% group_by(county=US$Province_State) %>% summarise(lead=max(deaths,na.rm=TRUE))
+
+cvtus2 <-US %>% group_by(county=US$Province_State) %>% slice(which.max(deaths))
+
+cvtus3 <- cvtus2[order(cvtus2$deaths),]
+
+usdeaths_top20 <- tail(cvtus3,20)
+usdeaths_top10 <- tail(cvtus3,10)
+usdeaths_top100 <- tail(cvtus3,100)
+
+p<- ggplot(data=usdeaths_top20, aes(x=Province_State,y=deaths)) + geom_bar(stat="identity",color="red",fill="white")+
+geom_text(aes(label=""), vjust=0.9)
+
+p + theme(axis.text.x = element_text(angle = 90))
+
+ggplot(data=usdeaths_top20, aes(x=Province_State,y=deaths)) + geom_bar(stat="identity",width=1,color="red")+
+coord_polar("y",start=0)
+
+ggplot(data=usdeaths_top10, aes(x="",y=deaths,fill=Province_State))  + geom_bar(stat="identity",width=1,color="red") + coord_polar("y",start=0)
+
+
+p<- ggplot(data=usdeaths_top10, aes(x=Province_State,y=deaths)) + geom_bar(stat="identity",color="red",fill="white")+
+geom_text(aes(label=""), vjust=0.9)
+
+p + theme(axis.text.x = element_text(angle = 90))
+
+ggplot(data=usdeaths_top10, aes(x=Province_State,y=deaths)) + geom_bar(stat="identity",width=1,color="green")+
+coord_polar("y",start=0)
+
+ggplot(data=usdeaths_top10, aes(x="",y=deaths,fill=Province_State))  + geom_bar(stat="identity",width=1,color="red") + coord_polar("y",start=0)
+
+### MODELS
+ p3 <- ggplot(usdeaths_top100, aes(x=cases, y=deaths)) +
+      geom_point(size=3, col = "red")  +
+      geom_smooth(method='lm', se=FALSE, col="black", linetype="solid") +
+      labs(title="Regression of # cases and deaths - US States",x="Cases",y="deaths") +
+      theme_minimal()  
+ 
+ p3
+
+p4 <- ggplot(usdeaths_top100, aes(x=Population, y=deaths)) +
+   geom_point(size=3, col = "red")  +
+   geom_smooth(method='lm', se=FALSE, col="black", linetype="solid") +
+   labs(title="Regression of Population and deaths- US States",x="Population",y="deaths") +
+   theme_minimal()  
+
+p4
+
+p5 <- ggplot(usdeaths_top100, aes(x=Population, y=cases)) +
+      geom_point(size=3, col = "red")  +
+      geom_smooth(method='lm', se=FALSE, col="black", linetype="solid") +
+      labs(title="Regression of Population and cases -  US States",x="Population",y="cases") +
+      theme_minimal()  
+
+ p5
+
+
+```
+
+
+### **Conclusion**
+
+The COVID-19 dataset includes data for the years 2020 to 2023. The data analysis shows that almost every country was impacted. The number of cases and deaths is directly related to population. The same is true in the United States, with California and Florida leading the pack in the number of deaths and California and Illinois leading the pack in the number of cases. States and nations can use the trends identified to develop strategies and plans to mitigate the future impact of the pandemic. There is a possibility of bias toward the more developed countries due to the resources available to gather reliable information. More information was available and readily obtainable from countries like the US, UK, Russia, etc. This may imply that the trends identified describe these countries more closely.
+
+
+
+
