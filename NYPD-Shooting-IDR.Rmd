@@ -1,0 +1,108 @@
+---
+title: "NYPD Shooting Incidents Analysis"
+date: "2024-04-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE, echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## NYPD Shooting Incidents Dataset (Historic) 2006-2022
+
+The dataset includes every shooting incident in NYC from 2006 through 2022. The data was manually extracted every quarter and reviewed by the Office of Management Analysis and Planning. Each record represents a shooting incident in NYC and includes information about the event, the location, and the time of occurrence. In addition, the dataset includes information related to suspect and victim demographics. This dataset is public and can be used for research. Missing data values are replaced with "UNKNOWN" for data analysis, and unnecessary columns are dropped. Description of the dataset follows:
+
+
+```{r import_data, message=FALSE , echo=TRUE}
+library(tidyverse)
+library(Hmisc)
+library (lubridate)
+
+
+NYPD_dataset = read.csv(
+  "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+NYPD_ads <- 
+select (NYPD_dataset,OCCUR_DATE,OCCUR_TIME,BORO,PRECINCT,PERP_AGE_GROUP,PERP_SEX,
+        PERP_RACE,VIC_AGE_GROUP,VIC_SEX,VIC_RACE) 
+NYPD_ads$OCCUR_DATE <- mdy(NYPD_ads$OCCUR_DATE)
+NYPD_ads$OCCUR_TIME <- hms(NYPD_ads$OCCUR_TIME)
+```
+```{r data_cleanup, message=FALSE , echo=TRUE}
+
+## **DATA Cleaning**
+
+NYPD_ads$PERP_RACE <- replace(NYPD_ads$PERP_RACE,NYPD_ads$PERP_RACE=="","UNKNOWN")
+NYPD_ads$PERP_AGE_GROUP <- replace(NYPD_ads$PERP_AGE_GROUP,NYPD_ads$PERP_AGE_GROUP=="","UNKNOWN")
+NYPD_ads$PERP_SEX <- replace(NYPD_ads$PERP_SEX,NYPD_ads$PERP_SEX=="","UNKNOWN")
+NYPD_ads$VIC_AGE_GROUP <- replace(NYPD_ads$VIC_AGE_GROUP,NYPD_ads$VIC_AGE_GROUP=="1022","UNKNOWN")
+
+## **DATA Description and Summary**
+
+describe (NYPD_ads)
+summary(NYPD_ads)
+
+```         
+\newpage
+
+### **Data Analysis by Victim Age**
+
+This visualization shows the distribution of incidents across age groups. The stacked bars show the gender of the victims. The data shows that most victims are male and fall between 18 and 44 years of age.
+
+```{r plots, echo=TRUE}
+
+
+NYPDG1 <- NYPD_ads %>% group_by(NYPD_ads$VIC_AGE_GROUP) %>% count(NYPD_ads$VIC_SEX)
+VIC_AGE <- NYPDG1$`NYPD_ads$VIC_AGE_GROUP`
+Vcount <- NYPDG1$n
+ggplot(data=NYPDG1, aes(x=VIC_AGE,y=Vcount)) + geom_bar(stat="identity",color="red",fill="white")+
+  geom_text(aes(label=NYPDG1$`NYPD_ads$VIC_SEX`), vjust=0.9)
+
+```
+\newpage
+
+### **Data Analysis by Borough/Town**
+
+This visualization shows the distribution of incidents across different boroughs or towns in NYC.  The data shows that most incidents occurred in Brooklyn and the Bronx.
+
+```{r plots2, echo=TRUE}
+NYPDG3 <- NYPD_ads %>% group_by(NYPD_ads$BORO) %>% count(NYPD_ads$BORO)
+VIC_BORO3 <- NYPDG3$`NYPD_ads$BORO`
+BORO_count3 <- NYPDG3$`n`
+
+BOROUGHS <- NYPDG3$`NYPD_ads$BORO`
+BORO_counter <- NYPDG3$`n`
+ggplot(data=NYPDG3, aes(x="",y=BORO_counter,fill=BOROUGHS))+
+  geom_bar(stat="identity", width=1,color="white")+ 
+  coord_polar("y",start=0) 
+
+NYPDG6y <- NYPD_ads %>% group_by(year(NYPD_ads$OCCUR_DATE))  %>% count(`year(NYPD_ads$OCCUR_DATE)`)
+ggplot(data=NYPDG6y, aes(x=`year(NYPD_ads$OCCUR_DATE)`, y=n)) + geom_line(color="red")
+
+NYPDG6mn <- NYPD_ads %>% group_by(month(NYPD_ads$OCCUR_DATE))  %>% count(`month(NYPD_ads$OCCUR_DATE)`)
+ggplot(data=NYPDG6mn, aes(x=`month(NYPD_ads$OCCUR_DATE)`, y=n)) + geom_line(color="red")
+
+NYPDG6day <- NYPD_ads %>% group_by(day(NYPD_ads$OCCUR_DATE))  %>% count(`day(NYPD_ads$OCCUR_DATE)`)
+
+ggplot(data=NYPDG6day, aes(x=`day(NYPD_ads$OCCUR_DATE)`, y=n)) + geom_line(color="red")
+
+ggplot(NYPDG6day, aes(x=`day(NYPD_ads$OCCUR_DATE)`, y=n)) +
+ geom_line(linewidth=1, col = "red")  +
+ geom_smooth(method='lm', se=FALSE, col="black", linetype="solid") +
+ labs(title="Regression of Day of Month and Incidents -  NYPD",x="Day",y="cases")
+
+
+```
+
+
+### **Conclusion**
+
+The NYPD Shooting Incidents dataset includes data for the years 2006 to 2022. The data analysis showed that most of the shooting incidents during this period occurred in Brooklyn and the Bronx. The vast majority of the victims are male. The analysis used only the number of incidents and locations to avoid bias by ethnicity/race. Further analysis is needed to establish the correlation between incidents, population, and the ethnicity/race of perpetrators and victims.
+
+
+
+
+
